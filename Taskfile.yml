@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  start-docker:
+    status:
+      - test -n "$(docker ps -q -f name=^yahoo-fantasy-oauth-valkey$)"
+    cmds:
+      - docker run --rm -d --name yahoo-fantasy-oauth-valkey -p 6379:6379 valkey/valkey:latest
+
+  stop-docker:
+    cmds:
+      - docker stop yahoo-fantasy-oauth-valkey
+
+  start:
+    desc: Start the application
+    deps:
+      - start-docker
+    dotenv:
+      - .env
+    cmds:
+      - go run main.go --redis-url redis://localhost:6379 --gin-mode debug --log-level debug

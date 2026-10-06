@@ -1,0 +1,136 @@
+name: Dev
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'go.sum'
+      - 'go.mod'
+      - '**.go'
+      - .github/workflows/golang.yml
+      - '.goreleaser.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.go'
+      - 'go.sum'
+      - 'go.mod'
+      - .github/workflows/golang.yml
+      - '.goreleaser.yml'
+
+permissions:
+  security-events: write
+  actions: write
+  packages: write
+  contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+      # renovate: datasource=github-tags depName=gotestyourself/gotestsum
+      GOTEST_SUM_VERSION: v1.13.0
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@${{ env.GOTEST_SUM_VERSION }}
+
+      - name: Test
+        run: task test
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          report_type: test_results
+
+      - name: Run E2E tests
+        run: task e2e
+
+  Snapshot:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+
+      - name: GoReleaser Action
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: '~> v2'
+          args: --snapshot --clean --skip=publish,sign
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to R2
+        run: |
+          aws s3 cp dist/ s3://github-actions-artifacts/snapshots/email-backup-tool/${{ github.sha }} --recursive --checksum-algorithm CRC32
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACTS_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACTS_AWS_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL_S3: https://8be772befd147a8df540aae0fa15c047.r2.cloudflarestorage.com
+
+      - name: Add step summary with artifact link
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          ARTIFACT_URL: ${{ vars.ARTIFACT_PUBLIC_DOMAIN }}
+        with:
+          script: |
+            const artifactUrl = process.env.ARTIFACT_URL + 'email-backup-tool/' + context.sha + '/';
+            const summaryBody = `Snapshot release for commit ${context.sha} is available.`;
+            core.summary.addHeading('Snapshot Release').addRaw(summaryBody).addBreak().addLink('Download Artifacts', artifactUrl).write();  
