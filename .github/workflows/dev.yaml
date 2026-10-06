@@ -8,8 +8,8 @@ on:
       - 'go.sum'
       - 'go.mod'
       - '**.go'
-      - .github/workflows/golang.yml
-      - '.goreleaser.yml'
+      - .github/workflows/dev.yaml
+      - '.goreleaser.yaml'
   pull_request:
     branches:
       - main
@@ -17,8 +17,8 @@ on:
       - '**.go'
       - 'go.sum'
       - 'go.mod'
-      - .github/workflows/golang.yml
-      - '.goreleaser.yml'
+      - .github/workflows/dev.yaml
+      - '.goreleaser.yaml'
 
 permissions:
   security-events: write
@@ -119,7 +119,7 @@ jobs:
 
       - name: Upload to R2
         run: |
-          aws s3 cp dist/ s3://github-actions-artifacts/snapshots/email-backup-tool/${{ github.sha }} --recursive --checksum-algorithm CRC32
+          aws s3 cp dist/ s3://github-actions-artifacts/snapshots/${{github.event.repository.name}}/${{ github.sha }} --recursive --checksum-algorithm CRC32
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.ARTIFACTS_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACTS_AWS_SECRET_ACCESS_KEY }}
@@ -131,6 +131,6 @@ jobs:
           ARTIFACT_URL: ${{ vars.ARTIFACT_PUBLIC_DOMAIN }}
         with:
           script: |
-            const artifactUrl = process.env.ARTIFACT_URL + 'email-backup-tool/' + context.sha + '/';
+            const artifactUrl = process.env.ARTIFACT_URL + '${{github.event.repository.name}}/' + context.sha + '/';
             const summaryBody = `Snapshot release for commit ${context.sha} is available.`;
             core.summary.addHeading('Snapshot Release').addRaw(summaryBody).addBreak().addLink('Download Artifacts', artifactUrl).write();  
