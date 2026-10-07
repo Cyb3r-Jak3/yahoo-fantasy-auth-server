@@ -55,6 +55,12 @@ release:
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
 
+    
+checksum:
+  name_template: 'checksums.txt'
+
+docker_digest:
+  name_template: 'digest.txt'
 
 dockers_v2:
   - dockerfile: Dockerfile
