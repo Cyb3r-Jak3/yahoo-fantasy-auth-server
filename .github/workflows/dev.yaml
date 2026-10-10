@@ -76,9 +76,6 @@ jobs:
           use_oidc: true
           report_type: test_results
 
-      - name: Run E2E tests
-        run: task e2e
-
   Snapshot:
     runs-on: ubuntu-latest
     env:

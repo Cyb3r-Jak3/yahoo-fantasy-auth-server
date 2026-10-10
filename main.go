@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -110,6 +111,11 @@ func main() {
 				Value:   10 * time.Minute,
 				Sources: cli.EnvVars("REGISTRATION_TIMEOUT"),
 			},
+			&cli.BoolFlag{
+				Name:  "test-mode",
+				Usage: "Display successful auth rather than redirecting back to local client",
+				Value: false,
+			},
 		},
 		Action:                run,
 		EnableShellCompletion: true,
@@ -166,8 +172,12 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		ClientSecret: cmd.String("client-secret"),
 		Endpoint:     yahoo.Endpoint,
 	}
-	registrationTimeout := cmd.Duration("registration-timeout")
-	gin.SetMode(cmd.String("gin-mode"))
+	r := newRouter(ctx, valkeyClient, cmd.Duration("registration-timeout"), cmd.String("gin-mode"), cmd.Bool("test-mode"))
+	return r.Run(fmt.Sprintf("%s:%d", cmd.String("address"), cmd.Int("port")))
+}
+
+func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTimeout time.Duration, ginMode string, testMode bool) *gin.Engine {
+	gin.SetMode(ginMode)
 	r := gin.Default()
 	r.GET("/ready", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
@@ -247,6 +257,33 @@ func run(ctx context.Context, cmd *cli.Command) error {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to exchange code for token"})
 			return
 		}
+		if testMode {
+			req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, "https://fantasysports.yahooapis.com/fantasy/v2/users;use_login=1/games", nil)
+			if err != nil {
+				logger.Error("unable to create testMode request", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create test mode request"})
+			}
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", basicToken.AccessToken))
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				logger.Error("Error doing test mode request", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to make test mode request"})
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				logger.Error("Got non-200 response code from test mode request", zap.Int("status_code", resp.StatusCode))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "got non-200 response from test request"})
+				return
+			}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				logger.Error("Unable to read test mode response body", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to read test response body"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"body": body})
+		}
 		tokenRecord := TokenRecord{
 			RegistrationID: state,
 			AccessToken:    basicToken.AccessToken,
@@ -272,7 +309,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		c.JSON(http.StatusOK, tokenRecord)
 	})
 
-	return r.Run(fmt.Sprintf("%s:%d", cmd.String("address"), cmd.Int("port")))
+	return r
 }
 
 type TokenRecord struct {

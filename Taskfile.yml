@@ -20,4 +20,4 @@ tasks:
     dotenv:
       - .env
     cmds:
-      - go run main.go --redis-url redis://localhost:6379 --gin-mode debug --log-level debug
+      - go run main.go --redis-url redis://localhost:6379 --gin-mode debug --log-level debug --test-mode

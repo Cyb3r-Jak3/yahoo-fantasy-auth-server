@@ -7,6 +7,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/urfave/cli/v3 v3.14.0
 	github.com/valkey-io/valkey-go v1.0.78
+	github.com/valkey-io/valkey-go/mock v1.0.78
+	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/oauth2 v0.37.0
 )
