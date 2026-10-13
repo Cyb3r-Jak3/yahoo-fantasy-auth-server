@@ -5,7 +5,6 @@ version: 2
 
 before:
   hooks:
-    # You may remove this if you don't use go modules.
     - go mod tidy
 
 builds:
@@ -51,6 +50,17 @@ checksum:
 
 docker_digest:
   name_template: 'digests.txt'
+
+signs:
+  - artifacts: all
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
 
 dockers_v2:
   - dockerfile: Dockerfile
