@@ -341,7 +341,7 @@ func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTime
 	})
 	r.GET("/token/:registration_id", func(c *gin.Context) {
 		registrationID := c.Param("registration_id")
-		tokenRecord, err := loadToken(c.Request.Context(), valkeyClient, registrationID)
+		tokenRecord, err := loadToken(c.Request.Context(), valkeyClient, registrationID, true)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
 			return
@@ -397,11 +397,17 @@ func saveToken(ctx context.Context, c valkey.Client, registrationID string, rec 
 	return c.Do(ctx, c.B().Set().Key(tokenKey(registrationID)).Value(string(b)).Ex(expire).Build()).Error()
 }
 
-func loadToken(ctx context.Context, c valkey.Client, registrationID string) (TokenRecord, error) {
+func loadToken(ctx context.Context, c valkey.Client, registrationID string, delete bool) (TokenRecord, error) {
 	var rec TokenRecord
 	b, err := c.Do(ctx, c.B().Get().Key(tokenKey(registrationID)).Build()).AsBytes()
 	if err != nil {
 		return rec, err
+	}
+	if delete {
+		resp := c.Do(ctx, c.B().Del().Key(tokenKey(registrationID)).Build())
+		if resp.Error() != nil {
+			logger.Error("Unable to delete old registration token", zap.Error(resp.Error()))
+		}
 	}
 	return rec, json.Unmarshal(b, &rec)
 }

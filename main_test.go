@@ -92,7 +92,7 @@ func TestLoadToken(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client, _ := setup(t)
 		client.EXPECT().Do(gomock.Any(), mock.Match("GET", "yfo:token:id")).Return(mock.Result(mock.ValkeyBlobString(string(b))))
-		got, err := loadToken(context.Background(), client, "id")
+		got, err := loadToken(context.Background(), client, "id", true)
 		if err != nil || got != rec {
 			t.Fatalf("got %+v, err %v", got, err)
 		}
@@ -100,14 +100,14 @@ func TestLoadToken(t *testing.T) {
 	t.Run("missing", func(t *testing.T) {
 		client, _ := setup(t)
 		client.EXPECT().Do(gomock.Any(), gomock.Any()).Return(mock.Result(mock.ValkeyNil()))
-		if _, err := loadToken(context.Background(), client, "id"); err == nil {
+		if _, err := loadToken(context.Background(), client, "id", true); err == nil {
 			t.Fatal("expected error")
 		}
 	})
 	t.Run("bad json", func(t *testing.T) {
 		client, _ := setup(t)
 		client.EXPECT().Do(gomock.Any(), gomock.Any()).Return(mock.Result(mock.ValkeyBlobString("{not json")))
-		if _, err := loadToken(context.Background(), client, "id"); err == nil {
+		if _, err := loadToken(context.Background(), client, "id", true); err == nil {
 			t.Fatal("expected error")
 		}
 	})
