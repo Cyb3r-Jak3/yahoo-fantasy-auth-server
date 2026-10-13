@@ -13,6 +13,11 @@ tasks:
     cmds:
       - docker stop yahoo-fantasy-oauth-valkey
 
+  test:
+    desc: Run tests
+    cmds:
+      - gotestsum --format testname --junitfile junit.xml -- -coverprofile=cover.out ./...
+
   start:
     desc: Start the application
     deps:
