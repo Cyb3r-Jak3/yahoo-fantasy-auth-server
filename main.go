@@ -157,19 +157,16 @@ func main() {
 
 func run(ctx context.Context, cmd *cli.Command) error {
 	logLevel := cmd.String("log-level")
-	switch logLevel {
-	case "debug":
-		logger, _ = zap.NewDevelopment()
-	case "info":
-		logger, _ = zap.NewProduction()
-	case "warn":
-		cfg := zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zap.WarnLevel)
-		logger, _ = cfg.Build()
-	case "error":
-		cfg := zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zap.ErrorLevel)
-		logger, _ = cfg.Build()
+	level, err := zap.ParseAtomicLevel(logLevel)
+	if err != nil {
+		return fmt.Errorf("invalid log-level %q: %w", logLevel, err)
+	}
+	// Production config always encodes as JSON, whatever the level
+	logCfg := zap.NewProductionConfig()
+	logCfg.Level = level
+	logger, err = logCfg.Build()
+	if err != nil {
+		return fmt.Errorf("failed to build logger: %w", err)
 	}
 	if cmd.String("client-id") == "" || cmd.String("client-secret") == "" || cmd.String("redirect-uri") == "" {
 		return fmt.Errorf("client-id, client-secret, and redirect-uri must be provided")
@@ -221,7 +218,8 @@ func buildRedisURL(host string, port int, username, password string) string {
 
 func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTimeout time.Duration, ginMode string, testMode bool) *gin.Engine {
 	gin.SetMode(ginMode)
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery(), requestLogger("/ready", "/health"))
 	r.GET("/ready", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
@@ -353,6 +351,31 @@ func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTime
 	})
 
 	return r
+}
+
+// requestLogger logs each request as structured JSON via zap, skipping the given paths.
+func requestLogger(skipPaths ...string) gin.HandlerFunc {
+	skip := make(map[string]struct{}, len(skipPaths))
+	for _, p := range skipPaths {
+		skip[p] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if _, ok := skip[path]; ok {
+			c.Next()
+			return
+		}
+		start := time.Now()
+		c.Next()
+		logger.Info("request",
+			zap.Int("status", c.Writer.Status()),
+			zap.String("method", c.Request.Method),
+			zap.String("path", path),
+			zap.String("client_ip", c.ClientIP()),
+			zap.Duration("latency", time.Since(start)),
+			zap.String("user_agent", c.Request.UserAgent()),
+		)
+	}
 }
 
 type TokenRecord struct {
