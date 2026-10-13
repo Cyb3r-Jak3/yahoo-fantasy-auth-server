@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -94,9 +96,30 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "redis-url",
-				Usage:   "URL for your Redis instance (e.g., redis://localhost:6379)",
-				Value:   "redis://localhost:6379",
+				Usage:   "URL for your Redis instance (e.g., redis://localhost:6379). Overrides the redis-host, redis-port, redis-username and redis-password flags",
 				Sources: cli.EnvVars("REDIS_URL"),
+			},
+			&cli.StringFlag{
+				Name:    "redis-host",
+				Usage:   "Redis host, used to build the Redis URL if redis-url is not set",
+				Value:   "localhost",
+				Sources: cli.EnvVars("REDIS_HOST"),
+			},
+			&cli.IntFlag{
+				Name:    "redis-port",
+				Usage:   "Redis port, used to build the Redis URL if redis-url is not set",
+				Value:   6379,
+				Sources: cli.EnvVars("REDIS_PORT"),
+			},
+			&cli.StringFlag{
+				Name:    "redis-username",
+				Usage:   "Redis username, used to build the Redis URL if redis-url is not set",
+				Sources: cli.EnvVars("REDIS_USERNAME"),
+			},
+			&cli.StringFlag{
+				Name:    "redis-password",
+				Usage:   "Redis password, used to build the Redis URL if redis-url is not set",
+				Sources: cli.EnvVars("REDIS_PASSWORD"),
 			},
 			&cli.StringFlag{
 				Name:    "gin-mode",
@@ -151,13 +174,18 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	if cmd.String("client-id") == "" || cmd.String("client-secret") == "" || cmd.String("redirect-uri") == "" {
 		return fmt.Errorf("client-id, client-secret, and redirect-uri must be provided")
 	}
-	if cmd.String("redis-url") == "" {
-		return fmt.Errorf("redis-url must be provided")
+	redisURL := cmd.String("redis-url")
+	if redisURL == "" {
+		if cmd.String("redis-host") == "" {
+			return fmt.Errorf("redis-url or redis-host must be provided")
+		}
+		redisURL = buildRedisURL(cmd.String("redis-host"), cmd.Int("redis-port"), cmd.String("redis-username"), cmd.String("redis-password"))
 	}
-	valkeyURL, err := valkey.ParseURL(cmd.String("redis-url"))
+	valkeyURL, err := valkey.ParseURL(redisURL)
 	if err != nil {
-		logger.Error("invalid redis-url", zap.String("redis-url", cmd.String("redis-url")), zap.Error(err))
-		return fmt.Errorf("invalid redis-url: %w", err)
+		// Don't log the URL itself, it may contain credentials
+		logger.Error("invalid redis connection settings", zap.Error(err))
+		return fmt.Errorf("invalid redis connection settings: %w", err)
 	}
 	valkeyClient, err := valkey.NewClient(valkeyURL)
 	if err != nil {
@@ -174,6 +202,21 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	}
 	r := newRouter(ctx, valkeyClient, cmd.Duration("registration-timeout"), cmd.String("gin-mode"), cmd.Bool("test-mode"))
 	return r.Run(fmt.Sprintf("%s:%d", cmd.String("address"), cmd.Int("port")))
+}
+
+// buildRedisURL assembles a redis:// URL from its separate parts, escaping credentials as needed.
+func buildRedisURL(host string, port int, username, password string) string {
+	u := url.URL{
+		Scheme: "redis",
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
+	}
+	switch {
+	case password != "":
+		u.User = url.UserPassword(username, password)
+	case username != "":
+		u.User = url.User(username)
+	}
+	return u.String()
 }
 
 func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTimeout time.Duration, ginMode string, testMode bool) *gin.Engine {
