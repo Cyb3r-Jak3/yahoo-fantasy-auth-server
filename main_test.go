@@ -92,6 +92,7 @@ func TestLoadToken(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client, _ := setup(t)
 		client.EXPECT().Do(gomock.Any(), mock.Match("GET", "yfo:token:id")).Return(mock.Result(mock.ValkeyBlobString(string(b))))
+		client.EXPECT().Do(gomock.Any(), mock.Match("DEL", "yfo:token:id")).Return(mock.Result(mock.ValkeyInt64(1)))
 		got, err := loadToken(context.Background(), client, "id", true)
 		if err != nil || got != rec {
 			t.Fatalf("got %+v, err %v", got, err)
@@ -107,6 +108,7 @@ func TestLoadToken(t *testing.T) {
 	t.Run("bad json", func(t *testing.T) {
 		client, _ := setup(t)
 		client.EXPECT().Do(gomock.Any(), gomock.Any()).Return(mock.Result(mock.ValkeyBlobString("{not json")))
+		client.EXPECT().Do(gomock.Any(), mock.Match("DEL", "yfo:token:id")).Return(mock.Result(mock.ValkeyInt64(1)))
 		if _, err := loadToken(context.Background(), client, "id", true); err == nil {
 			t.Fatal("expected error")
 		}
@@ -266,6 +268,7 @@ func TestGetToken(t *testing.T) {
 		client, h := setup(t)
 		b, _ := json.Marshal(TokenRecord{RegistrationID: "rid", AccessToken: "at", RefreshToken: "rt"})
 		client.EXPECT().Do(gomock.Any(), mock.Match("GET", "yfo:token:rid")).Return(mock.Result(mock.ValkeyBlobString(string(b))))
+		client.EXPECT().Do(gomock.Any(), mock.Match("DEL", "yfo:token:rid")).Return(mock.Result(mock.ValkeyInt64(1)))
 		w := do(h, http.MethodGet, "/token/rid")
 		if w.Code != http.StatusOK {
 			t.Fatalf("got %d", w.Code)
