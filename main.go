@@ -138,6 +138,7 @@ func main() {
 				Name:  "test-mode",
 				Usage: "Display successful auth rather than redirecting back to local client",
 				Value: false,
+				Sources: cli.EnvVars("TEST_MODE"),
 			},
 		},
 		Action:                run,
