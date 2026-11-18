@@ -20,7 +20,10 @@ import (
 	"golang.org/x/oauth2/yahoo"
 )
 
-const testTimeout = 10 * time.Minute
+const (
+	testTimeout    = 10 * time.Minute
+	testBindingTTL = 24 * time.Hour
+)
 
 func TestMain(m *testing.M) {
 	logger = zap.NewNop()
@@ -36,7 +39,7 @@ func setup(t *testing.T) (*mock.Client, http.Handler) {
 		RedirectURL:  "https://example.com/oauth2/callback",
 		Endpoint:     oauth2.Endpoint{TokenURL: "http://127.0.0.1:0/token"},
 	}
-	return client, newRouter(context.Background(), client, testTimeout, "test", false)
+	return client, newRouter(context.Background(), client, testTimeout, testBindingTTL, "test", false)
 }
 
 func do(h http.Handler, method, path string) *httptest.ResponseRecorder {
