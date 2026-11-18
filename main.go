@@ -208,6 +208,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("refresh-binding-ttl must be positive")
 	}
 	r := newRouter(ctx, valkeyClient, cmd.Duration("registration-timeout"), cmd.Duration("refresh-binding-ttl"), cmd.String("gin-mode"), cmd.Bool("test-mode"))
+	logger.Info("Starting server", zap.String("address", cmd.String("address")), zap.Int("port", cmd.Int("port")))
 	return r.Run(fmt.Sprintf("%s:%d", cmd.String("address"), cmd.Int("port")))
 }
 
