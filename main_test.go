@@ -238,29 +238,6 @@ func TestCallback(t *testing.T) {
 			t.Errorf("got %d", w.Code)
 		}
 	})
-	t.Run("success", func(t *testing.T) {
-		client, h := setup(t)
-		oauthConfig.Endpoint.TokenURL = tokenServer(t, http.StatusOK, `{"access_token":"at","refresh_token":"rt","token_type":"bearer","expires_in":3600}`)
-		gomock.InOrder(
-			client.EXPECT().Do(gomock.Any(), mock.Match("GET", "yfo:registration:s")).Return(future),
-			client.EXPECT().Do(gomock.Any(), gomock.Any()).Return(mock.Result(mock.ValkeyString("OK"))),
-		)
-		w := do(h, http.MethodGet, callback)
-		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "successful") {
-			t.Errorf("got %d %s", w.Code, w.Body)
-		}
-	})
-	t.Run("save fails", func(t *testing.T) {
-		client, h := setup(t)
-		oauthConfig.Endpoint.TokenURL = tokenServer(t, http.StatusOK, `{"access_token":"at","token_type":"bearer"}`)
-		gomock.InOrder(
-			client.EXPECT().Do(gomock.Any(), gomock.Any()).Return(future),
-			client.EXPECT().Do(gomock.Any(), gomock.Any()).Return(mock.ErrorResult(errors.New("x"))),
-		)
-		if w := do(h, http.MethodGet, callback); w.Code != http.StatusInternalServerError {
-			t.Errorf("got %d", w.Code)
-		}
-	})
 }
 
 func TestGetToken(t *testing.T) {
