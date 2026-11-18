@@ -134,6 +134,12 @@ func main() {
 				Value:   10 * time.Minute,
 				Sources: cli.EnvVars("REGISTRATION_TIMEOUT"),
 			},
+			&cli.DurationFlag{
+				Name:    "refresh-binding-ttl",
+				Usage:   "How long a refresh token stays bound to its registration without being used (e.g. 2160h). Each refresh extends it",
+				Value:   90 * 24 * time.Hour,
+				Sources: cli.EnvVars("REFRESH_BINDING_TTL"),
+			},
 			&cli.BoolFlag{
 				Name:    "test-mode",
 				Usage:   "Display successful auth rather than redirecting back to local client",
@@ -198,7 +204,10 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		ClientSecret: cmd.String("client-secret"),
 		Endpoint:     yahoo.Endpoint,
 	}
-	r := newRouter(ctx, valkeyClient, cmd.Duration("registration-timeout"), cmd.String("gin-mode"), cmd.Bool("test-mode"))
+	if cmd.Duration("refresh-binding-ttl") <= 0 {
+		return fmt.Errorf("refresh-binding-ttl must be positive")
+	}
+	r := newRouter(ctx, valkeyClient, cmd.Duration("registration-timeout"), cmd.Duration("refresh-binding-ttl"), cmd.String("gin-mode"), cmd.Bool("test-mode"))
 	return r.Run(fmt.Sprintf("%s:%d", cmd.String("address"), cmd.Int("port")))
 }
 
@@ -217,7 +226,7 @@ func buildRedisURL(host string, port int, username, password string) string {
 	return u.String()
 }
 
-func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTimeout time.Duration, ginMode string, testMode bool) *gin.Engine {
+func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTimeout, refreshBindingTTL time.Duration, ginMode string, testMode bool) *gin.Engine {
 	gin.SetMode(ginMode)
 	r := gin.New()
 	r.Use(gin.Recovery(), requestLogger("/ready", "/health"))
@@ -338,8 +347,16 @@ func newRouter(ctx context.Context, valkeyClient valkey.Client, registrationTime
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save token"})
 			return
 		}
+		if tokenRecord.RefreshToken != "" {
+			if err := saveRefreshBinding(c.Request.Context(), valkeyClient, state, tokenRecord.RefreshToken, refreshBindingTTL); err != nil {
+				logger.Error("failed to save refresh binding", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save refresh binding"})
+				return
+			}
+		}
 		c.String(http.StatusOK, "OAuth2 authentication successful. You can now close this window.")
 	})
+	r.POST("/refresh", refreshHandler(valkeyClient, refreshBindingTTL))
 	r.GET("/token/:registration_id", func(c *gin.Context) {
 		registrationID := c.Param("registration_id")
 		tokenRecord, err := loadToken(c.Request.Context(), valkeyClient, registrationID, true)
