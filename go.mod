@@ -1,6 +1,6 @@
 module github.com/Cyb3r-Jak3/go-yahoo-fantasy-backend
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/gin-gonic/gin v1.12.0
